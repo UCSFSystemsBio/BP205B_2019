@@ -10,4 +10,4 @@ You can also find the course syllabus [here](https://docs.google.com/document/d/
 
 # File Notes
 
-The two CSV files in the demultiplexing directory correspond to the two lanes of the sequencer. (...L001... is lane 1, ...L002... is lane 2)
+The two CSV files in the demultiplexing directory correspond to the two lanes of the sequencer (...L001... is lane 1, ...L002... is lane 2). The data in each lane is different, so the total data set is the concatenation of these two files, but note that the lane 1/lane 2 partitioning does not correspond to any other categorization of the data (cell type, phase, etc.). The lane information metatdata is preserved in case we wish to use it later. 
