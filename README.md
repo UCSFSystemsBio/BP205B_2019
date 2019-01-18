@@ -6,3 +6,8 @@ This year, our focus is on single cell genomics. As part of this class, we will 
 # Course syllabus
 
 You can also find the course syllabus [here](https://docs.google.com/document/d/1aooOdRI9hldHpYwExhrOo8ZGvGOQ8RFOxyhVimFQc9I)
+
+
+# File Notes
+
+The two CSV files in the demultiplexing directory correspond to the two lanes of the sequencer. (...L001... is lane 1, ...L002... is lane 2)
