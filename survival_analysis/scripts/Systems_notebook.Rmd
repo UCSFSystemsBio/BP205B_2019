@@ -1,8 +1,7 @@
 ---
 title: "R Notebook Systems"
 output:
-  rmarkdown::html_document:
-    theme: lumen
+ md_document
 author: Calla Martyn, Matt Johnson, and Miriam Goldman
 ---
 
@@ -31,7 +30,7 @@ ucsfcolors=c('#052049','#EB093C','#716FB2','#058488','#F26D04','#6EA400')
 # Make pateint zscores for each person 
 
 ## Read in data
-```{r}
+```{r,eval=FALSE}
 # find all the count table files
 files <- list.files(pattern = "*.htseq.counts.gz", recursive = TRUE)
 # read count tables into a list of tables
@@ -65,7 +64,7 @@ signature7<-signature7%>% filter(abs(logfoldchanges)>1.5 & pvals_adj<.00005)
 
 ## Trun into zscores and write out to pdata
 
-```{r}
+```{r,eval=FALSE}
 
 # import expression table just to use for translating ensemble ids to gene names
 gene_dict <- express_table %>% select(gene_ids, gene_short_name)
