@@ -1,6 +1,8 @@
 ---
 title: "R Notebook Systems"
-output: pdf_document
+output:
+  rmarkdown::html_document:
+    theme: lumen
 author: Calla Martyn, Matt Johnson, and Miriam Goldman
 ---
 
@@ -12,15 +14,17 @@ library(tidyverse)
 library(plyr)
 library(survival)
 library(survminer)
+library(ggrepel)
 knitr::opts_chunk$set(
 	echo = TRUE,
 	message = FALSE,
 	warning = FALSE,
 	eval = TRUE,
 	progress = FALSE, verbose = FALSE,
-	fig.pos = 'H',fig.width=12, fig.height=8, theme_set(theme_classic()),size=12
+	fig.pos = 'H',fig.width=12, fig.height=8, theme_set(theme_classic()),size=40
 )
-knitr::opts_knit$set(root.dir ="./survival_analysis/")
+knitr::opts_knit$set(root.dir ="/Users/miriamgoldman/current_work/survival_analysis/")
+ucsfcolors=c('#052049','#EB093C','#716FB2','#058488','#F26D04','#6EA400')
 ```
 
 
@@ -43,12 +47,19 @@ m <- m[6:nrow(m),-1]
 m_scaled <- as.data.frame(t(scale(t(m))))
 
 # read in the gene expression signature
-signature9 <- read.csv('./sc_signatures/bxpc3_leiden9_logfoldchangeGT50pct_genes.csv',
-                       stringsAsFactors = FALSE)
-signature1 <- read.csv('./sc_signatures/bxpc3_leiden1_logfoldchangeGT50pct_genes.csv',
-                       stringsAsFactors = FALSE)
+
 express_table <- read.csv('./sc_signatures/BXPC3_pvals_monacle.csv', 
                           stringsAsFactors = FALSE)
+
+signature2<-read.csv('./sc_signatures/bxpc3_leiden2_logfoldchangeGT50pct_genes.csv',stringsAsFactors = FALSE)
+signature6<-read.csv('./sc_signatures/bxpc3_leiden6_logfoldchangeGT50pct_genes.csv',stringsAsFactors = FALSE)
+signature3<-read.csv('./sc_signatures/panc1_leiden3_logfoldchangeGT50pct_genes.csv',stringsAsFactors = FALSE)
+signature7<-read.csv('./sc_signatures/panc1_leiden7_logfoldchangeGT50pct_genes.csv',stringsAsFactors = FALSE)
+
+signature2<-signature2 %>% filter(abs(logfoldchanges)>1.5 & pvals_adj<.00005)
+signature6<-signature6 %>% filter(abs(logfoldchanges)>1.5 & pvals_adj<.00005)
+signature3<-signature3%>% filter(abs(logfoldchanges)>1.5 & pvals_adj<.00005)
+signature7<-signature7%>% filter(abs(logfoldchanges)>1.5 & pvals_adj<.00005)
 ```
 
 
@@ -67,11 +78,14 @@ m_gene_names <- join(m_scaled, gene_dict, by = "gene_ids", type = "inner")
 # change rownames from ensembl IDs to gene names for easier selection
 rownames(m_gene_names) <- m_gene_names$gene_short_name
 # select only the rows matching the gene signature rows
-m_sig1 <- m_gene_names[signature1$names,]
-m_sig9 <- m_gene_names[signature9$names,]
-
-write.csv(m_sig1, './pData/clin_zscores_sig1.csv')
-write.csv(m_sig9, './pData/clin_zscores_sig9.csv')
+m_sig3 <- m_gene_names[signature3$names,]
+m_sig7 <- m_gene_names[signature7$names,]
+m_sig2<- m_gene_names[signature2$names,]
+m_sig6<- m_gene_names[signature6$names,]
+write.csv(m_sig3, './pData/clin_zscores_sig3.csv')
+write.csv(m_sig7, './pData/clin_zscores_sig7.csv')
+write.csv(m_sig2, './pData/clin_zscores_sig2.csv')
+write.csv(m_sig6, './pData/clin_zscores_sig6.csv')
 ```
 
 ## Make pateint metadata
@@ -121,121 +135,109 @@ df.to_csv("patient_metadata.tsv", sep='\t')
 
 ```{r,load data}
 output<-read.csv('./pData/patient_metadata.tsv',sep='\t')
-signature9<-read.csv('./sc_signatures/bxpc3_leiden9_logfoldchangeGT50pct_genes.csv')
-zscore9<-read.csv('./pData/clin_zscores_sig9.csv')
-signature1<-read.csv('./sc_signatures/bxpc3_leiden1_logfoldchangeGT50pct_genes.csv')
-zscore1<-read.csv('./pData/clin_zscores_sig1.csv')
+zscorebxpc2<-read.csv('./pData/clin_zscores_sig2.csv',stringsAsFactors = FALSE)
+zscorebxpc6<-read.csv('./pData/clin_zscores_sig6.csv',stringsAsFactors = FALSE)
+zscorepanc3<-read.csv('./pData/clin_zscores_sig3.csv',stringsAsFactors = FALSE)
+zscorepanc17<-read.csv('./pData/clin_zscores_sig7.csv',stringsAsFactors = FALSE)
+
+
+signature2<-read.csv('./sc_signatures/bxpc3_leiden2_logfoldchangeGT50pct_genes.csv',stringsAsFactors = FALSE)
+signature6<-read.csv('./sc_signatures/bxpc3_leiden6_logfoldchangeGT50pct_genes.csv',stringsAsFactors = FALSE)
+signature3<-read.csv('./sc_signatures/panc1_leiden3_logfoldchangeGT50pct_genes.csv',stringsAsFactors = FALSE)
+
+signature2<-signature2 %>% filter(abs(logfoldchanges)>1.5 & pvals_adj<.00005)
+signature6<-signature6 %>% filter(abs(logfoldchanges)>1.5 & pvals_adj<.00005)
+signature3<-signature3%>% filter(abs(logfoldchanges)>1.5 & pvals_adj<.00005)
 ```
 
 ## Survival Analysis
 
 ```{r}
-zscore9<-inner_join(zscore9,signature9,by=c("gene_short_name"="names"))
-p_9<-zscore9 %>% select(contains("count_table")) #pull out patinet vectors
-cors9<-apply(p_9,2,function(y) cor(zscore9$scores,as.numeric(y)))
-#turn all columns numeric and get the corralation between the two
-cors9<-data.frame("X0"=colnames(p_9),cors9)
-# set X0 to be patient names
-output$y<-ifelse(output$X1=="DiseaseFree",0,1) 
-# if Disease Free 0 else 1
 output<-output %>% filter(!is.na(X1))
-# filter out nas
-#combine on directory name
 output$dir_name<-unlist(lapply(output$X0,function(x) unlist(str_split(x,'-'))[5]))
-cors9$dir_name<-unlist(lapply(cors9$X0,function(x) unlist(str_split(x,'\\.'))[6]))
+output$y<-ifelse(output$X1=="DiseaseFree",0,1) 
 
 
-corrlation9<-inner_join(cors9,output,by="dir_name")
-cox<-coxph(Surv(corrlation9$X2,corrlation9$y)~corrlation9$cors9)
-cox_fix<-survfit(cox)
-
-cors1<-inner_join(zscore1,signature1,by=c("gene_short_name"="names"))
-p_1<-cors1%>% select(contains("count_table")) 
-
-cors1<-apply(p_1,2,function(y) cor(cors1$scores,as.numeric(y)))
-cors1<-data.frame("X0"=colnames(p_1),cors1)
-cors1$dir_name<-unlist(lapply(cors1$X0,function(x) unlist(str_split(x,'\\.'))[6]))
-corrlation1<-inner_join(cors1,output,by="dir_name")
-cox1<-coxph(Surv(corrlation1$X2,corrlation1$y)~corrlation1$cors)
-cox_fix1<-survfit(cox1)
+make_cors<-function(zscore,signature,title){
+  zscore<-inner_join(zscore,signature,by=c("gene_short_name"="names"))
+p<-zscore %>% select(contains("count_table")) #pull out patinet vectors
+cors<-apply(p,2,function(y) cor(zscore$scores,as.numeric(y)))
+#turn all columns numeric and get the corralation between the two
+cors<-data.frame("X0"=colnames(p),cors)
+cors$dir_name<-unlist(lapply(cors$X0,function(x) unlist(str_split(x,'\\.'))[6]))
+corrlation<-inner_join(cors,output,by="dir_name")
+print(ggplot(corrlation) + geom_histogram(aes(corrlation$cors))+ggtitle(paste0(title))+scale_color_manual(ucsfcolors))
+ggsave(paste0("./plots/histogram",title,".png"))
+  return(corrlation)
+}
 ```
 
 
+
 ```{r}
-pvalues1<-unlist(lapply(sort(corrlation1$cors1),
+y_cut_off<-function(cors,title){
+  pvalues<-unlist(lapply(sort(cors$cors),
 function(x)  
-  summary(coxph(Surv(corrlation1$X2,corrlation1$y)~ifelse(corrlation1$cors1>x,1,0)))$coef[5]))
-ps<-data.frame(percentile=1:138/138,pvalues1,cors=sort(corrlation1$cors1))
-ggplot(ps) + geom_point(aes(percentile,-log10(pvalues1)))
-min_cor_1=ps[ps$pvalues1==min(ps$pvalues1,na.rm=TRUE),3][1]
-ggsurvplot(survfit(Surv(corrlation1$X2,corrlation1$y)~ifelse(corrlation1$cors1<min_cor_1,1,0)),data=corrlation1) 
-```
-
-```{r}
-pvalues9<-unlist(lapply(sort(corrlation9$cors9),function(x)
-  summary(coxph(Surv(corrlation9$X2,corrlation9$y)~ifelse(corrlation9$cors9>x,1,0)))$coef[5]))
-ps9<-data.frame(percentile=1:138/138,pvalues9,cors=corrlation9$cors9)
-ggplot(ps9) + geom_point(aes(percentile,-log10(pvalues9)))
-min_cor_9=ps9[ps9$pvalues9==min(ps9$pvalues9,na.rm=TRUE),3][1]
-ggsurvplot(survfit(Surv(corrlation9$X2,corrlation9$y)~ifelse(corrlation9$cors9<min_cor_9,1,0)),data=corrlation9)
-```
-
-```{r}
-gene_9<-p_9 %>% t() %>% as.data.frame()
-colnames(gene_9)<-signature9$names
-gene_9$dir_name<-unlist(lapply(rownames(gene_9),function(x) unlist(str_split(x,'\\.'))[6]))
-genes9<-inner_join(gene_9,output,by="dir_name") %>% select(-dir_name,-X,-X0,-X1)
-gene_p_9<-apply(genes9[,1:83],2,function(x) 
-  summary(coxph(Surv(genes9$X2,genes9$y)~x))$coef[5]) %>% data.frame() 
-gene_coef_9<-apply(genes9[,1:83],2,function(x) 
-  summary(coxph(Surv(genes9$X2,genes9$y)~x))$coef[1]) %>% data.frame() 
-gene_p_9$names<-rownames(gene_p_9)
-colnames(gene_p_9)<-c("p_val","names")
-gene_coef_9$names<-rownames(gene_coef_9)
-colnames(gene_coef_9)<-c("coef","names")
-
-surv_genes_9<-inner_join(gene_p_9,signature9,by="names")
-surv_genes_9<-inner_join(gene_coef_9,surv_genes_9,by="names")
-ggplot(surv_genes_9,aes(coef,-log10(p_val),label=names))+geom_point()+geom_text(check_overlap = TRUE)
+  summary(coxph(Surv(cors$X2,cors$y)~ifelse(cors$cors>x,1,0)))$coef[5]))
+  ps<-data.frame(percentile=1:138/138,pvalues,cors=sort(cors$cors))
+  print(ggplot(ps) + geom_point(aes(percentile,-log10(pvalues)))+ggtitle(paste(title)))
+  ggsave(paste0("./plots/",title,"pvalue_plot.png"), width = 10, height = 10)
+  min_cor=ps[ps$pvalues==min(ps$pvalues,na.rm=TRUE),3][1]
+  cors$less_than_corr<-ifelse(cors$cors<min_cor,1,0)
+  print(ggsurvplot(survfit(Surv(cors$X2,cors$y)~cors$less_than_corr),data=cors,title=paste(title)))
+  ggsave(paste0("./plots/",title,"surv_plot.png"), width = 10, height = 10)
+}
 ```
 
 
 ```{r}
-
-gene_1<-p_1 %>% t() %>% as.data.frame()
-colnames(gene_1)<-signature1$names
-gene_1$dir_name<-unlist(lapply(rownames(gene_1)
-                               ,function(x) unlist(str_split(x,'\\.'))[6]))
-genes1<-inner_join(gene_1,output,by="dir_name") %>% select(-dir_name,-X,-X0,-X1)
-gene_p_1<-apply(genes1[,1:49],2,function(x) summary(coxph(Surv(genes1$X2,genes1$y)~as.numeric(x)))$coef[5]) %>% data.frame() 
-gene_coef_1<-apply(genes1[,1:49],2,
-                   function(x) summary(coxph(Surv(genes1$X2,genes1$y)~x))$coef[1]) %>% data.frame() 
-
-gene_p_1$names<-rownames(gene_p_1)
-colnames(gene_p_1)<-c("p_val","names")
-
-gene_coef_1$names<-rownames(gene_coef_1)
-colnames(gene_coef_1)<-c("coef","names")
-
-surv_genes_1<-inner_join(gene_p_1,signature1,by="names")
-surv_genes_1<-inner_join(gene_coef_1,surv_genes_1,by="names")
+surv_volcano<-function(zscore,signature,title){
+  siglen=dim(signature)[1]
+  zscore<-inner_join(zscore,signature,by=c("gene_short_name"="names"))
+  p<-zscore %>% select(contains("count_table"))
+  gene<-p %>% t() %>% as.data.frame()
+  colnames(gene)<-signature$names
+  gene$dir_name<-unlist(lapply(rownames(gene),function(x) unlist(str_split(x,'\\.'))[6]))
+  gene<-inner_join(gene,output,by="dir_name") %>% select(-dir_name,-X,-X0,-X1)
+  gene_p<-apply(gene[,1:siglen],2,function(x) 
+  summary(coxph(Surv(gene$X2,gene$y)~x))$coef[5]) %>% data.frame() 
+  gene_coef<-apply(gene[,1:siglen],2,function(x) 
+  summary(coxph(Surv(gene$X2,gene$y)~x))$coef[1]) %>% data.frame() 
+  gene_p$names<-rownames(gene_p)
+  colnames(gene_p)<-c("p_val","names")
+  gene_coef$names<-rownames(gene_coef)
+  colnames(gene_coef)<-c("coef","names")
+  surv_genes<-inner_join(gene_p,signature,by="names")
+  surv_genes<-inner_join(gene_coef,surv_genes,by="names")
+  surv_genes<-surv_genes %>% arrange(p_val,decreasing=FALSE)
+  vol<-ggplot(surv_genes,aes(coef,-log10(p_val)))+geom_point()+ggtitle(title)
+  print(vol+geom_text_repel(data=head(surv_genes, 10), aes(label=surv_genes$names[1:10])))
+  ggsave(paste0("./plots/",title,"volcano_plot.png"), width = 10, height = 10)
+}
 ```
+
+# BXPC Leiden 2
 
 ```{r}
-ggplot(surv_genes_1,aes(logfoldchanges,-log10(p_val),label=names))+geom_point()+geom_text(check_overlap = TRUE)
+sig_cors2<-make_cors(zscorebxpc2,signature2,"bxpc3_leiden2")
+y_cut_off(sig_cors2,"bxpc3 leiden2")
+surv_volcano(zscorebxpc2,signature2,"bxpc3 leiden2")
 ```
+
+# BXPC Leiden 6
 
 ```{r}
-ggsurvplot(survfit(Surv(genes1$X2,genes1$y)~
-                     ifelse(as.numeric(genes1$PRSS3)<median(as.numeric(genes1$PRSS3)),1,0),
-                   data=genes1))
-ggsurvplot(survfit(Surv(genes9$X2,genes9$y)~
-                     ifelse(as.numeric(genes9$TGFBI)<median(as.numeric(genes9$TGFBI)),1,0),
-                   data=genes9))
+sig_cors6<-make_cors(zscorebxpc6,signature6,"bxpc3 leiden6")
+y_cut_off(sig_cors6,"bxpc3 leiden6")
+surv_volcano(zscorebxpc6,signature6,"bxpc3 leiden6")
 ```
 
+# PANC1 Leiden 3
 
-
-
+```{r}
+sig_cors3<-make_cors(zscorepanc3,signature3,"panc1 leiden3")
+y_cut_off(sig_cors3,"panc1 leiden3")
+surv_volcano(zscorepanc3,signature3,"panc1 leiden3")
+```
 
 
