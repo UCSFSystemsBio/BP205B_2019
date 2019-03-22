@@ -24,6 +24,7 @@ knitr::opts_chunk$set(
 )
 knitr::opts_knit$set(root.dir ="/Users/miriamgoldman/current_work/survival_analysis/")
 ucsfcolors=c('#052049','#EB093C','#716FB2','#058488','#F26D04','#6EA400')
+set.seed(2)
 ```
 
 
@@ -165,8 +166,7 @@ cors<-apply(p,2,function(y) cor(zscore$scores,as.numeric(y)))
 cors<-data.frame("X0"=colnames(p),cors)
 cors$dir_name<-unlist(lapply(cors$X0,function(x) unlist(str_split(x,'\\.'))[6]))
 corrlation<-inner_join(cors,output,by="dir_name")
-print(ggplot(corrlation) + geom_histogram(aes(corrlation$cors))+ggtitle(paste0(title))+scale_color_manual(ucsfcolors))
-ggsave(paste0("./plots/histogram",title,".png"))
+(ggplot(corrlation) + geom_histogram(aes(corrlation$cors))+ggtitle(paste0(title))+scale_color_manual(ucsfcolors))
   return(corrlation)
 }
 ```
@@ -179,12 +179,11 @@ y_cut_off<-function(cors,title){
 function(x)  
   summary(coxph(Surv(cors$X2,cors$y)~ifelse(cors$cors>x,1,0)))$coef[5]))
   ps<-data.frame(percentile=1:138/138,pvalues,cors=sort(cors$cors))
-  print(ggplot(ps) + geom_point(aes(percentile,-log10(pvalues)))+ggtitle(paste(title)))
-  ggsave(paste0("./plots/",title,"pvalue_plot.png"), width = 10, height = 10)
+  (ggplot(ps) + geom_point(aes(percentile,-log10(pvalues)))+ggtitle(paste(title)))
   min_cor=ps[ps$pvalues==min(ps$pvalues,na.rm=TRUE),3][1]
-  cors$less_than_corr<-ifelse(cors$cors<min_cor,1,0)
-  print(ggsurvplot(survfit(Surv(cors$X2,cors$y)~cors$less_than_corr),data=cors,title=paste(title)))
-  ggsave(paste0("./plots/",title,"surv_plot.png"), width = 10, height = 10)
+  cors$less_than_corr<-ifelse(cors$cors>min_cor,0,1)
+  (ggsurvplot(survfit(Surv(cors$X2,cors$y)~cors$less_than_corr),data=cors,title=paste(title)))
+  return(min(ps$pvalues,na.rm=TRUE))
 }
 ```
 
@@ -210,8 +209,20 @@ surv_volcano<-function(zscore,signature,title){
   surv_genes<-inner_join(gene_coef,surv_genes,by="names")
   surv_genes<-surv_genes %>% arrange(p_val,decreasing=FALSE)
   vol<-ggplot(surv_genes,aes(coef,-log10(p_val)))+geom_point()+ggtitle(title)
-  print(vol+geom_text_repel(data=head(surv_genes, 10), aes(label=surv_genes$names[1:10])))
-  ggsave(paste0("./plots/",title,"volcano_plot.png"), width = 10, height = 10)
+  (vol+geom_text_repel(data=head(surv_genes, 10), aes(label=surv_genes$names[1:10])))
+}
+```
+
+```{r}
+permutation_test<-function(zscore,signature,title,n){
+  p=c()
+  for(i in 1:n){
+    zscore$gene_short_name<-zscore$gene_short_name[sample(nrow(zscore))]
+    perm_corlations<-make_cors(zscore,signature,paste0(title,n))
+    p[i]=y_cut_off(perm_corlations,paste(title,n))
+  }
+   return(p)
+
 }
 ```
 
@@ -219,24 +230,29 @@ surv_volcano<-function(zscore,signature,title){
 
 ```{r}
 sig_cors2<-make_cors(zscorebxpc2,signature2,"bxpc3_leiden2")
-y_cut_off(sig_cors2,"bxpc3 leiden2")
+pval<-y_cut_off(sig_cors2,"bxpc3 leiden2")
 surv_volcano(zscorebxpc2,signature2,"bxpc3 leiden2")
+perm_ps<-permutation_test(zscorebxpc2,signature2,"bxpc3 leiden2 permutations",50)
+ggplot(data.frame(perm_ps))+ geom_histogram(aes(perm_ps))+geom_vline(xintercept = pval)
 ```
 
 # BXPC Leiden 6
 
 ```{r}
 sig_cors6<-make_cors(zscorebxpc6,signature6,"bxpc3 leiden6")
-y_cut_off(sig_cors6,"bxpc3 leiden6")
+pval<-y_cut_off(sig_cors6,"bxpc3 leiden6")
 surv_volcano(zscorebxpc6,signature6,"bxpc3 leiden6")
+perm_ps<-permutation_test(zscorebxpc6,signature6,"bxpc3 leiden2 permutations",50)
+ggplot(data.frame(perm_ps))+ geom_histogram(aes(perm_ps))+geom_vline(xintercept = pval)
 ```
 
 # PANC1 Leiden 3
 
 ```{r}
 sig_cors3<-make_cors(zscorepanc3,signature3,"panc1 leiden3")
-y_cut_off(sig_cors3,"panc1 leiden3")
+pval<-y_cut_off(sig_cors3,"panc1 leiden3")
 surv_volcano(zscorepanc3,signature3,"panc1 leiden3")
+perm_ps<-permutation_test(zscorepanc3,signature3,"bxpc3 leiden2 permutations",50)
+ggplot(data.frame(perm_ps))+ geom_histogram(aes(perm_ps))+geom_vline(xintercept = pval)
 ```
-
 
